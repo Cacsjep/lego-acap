@@ -39,6 +39,9 @@
           <v-btn variant="text" size="small" :disabled="!legoReady || running || !certInfo?.has_cert" @click="renewCert" prepend-icon="mdi-refresh" color="secondary">
             Renew
           </v-btn>
+          <v-btn v-if="certInfo?.has_cert" variant="text" size="small" :disabled="running || installing" :loading="installing" @click="installCert" prepend-icon="mdi-upload" color="info">
+            Install
+          </v-btn>
           <v-btn v-if="running" variant="text" size="small" @click="stopLego" prepend-icon="mdi-stop-circle" color="error">
             Stop
           </v-btn>
@@ -52,26 +55,35 @@
           <!-- LEFT: Config -->
           <v-col cols="12" md="5">
             <v-card class="mb-2">
-              <v-card-title class="text-body-2 font-weight-bold py-2">Configuration</v-card-title>
+              <v-card-title class="d-flex align-center text-body-2 font-weight-bold py-2" style="position: sticky; top: 0; z-index: 1; background: rgb(var(--v-theme-surface));">
+                Configuration
+                <v-spacer />
+                <v-btn color="primary" variant="flat" size="small" @click="saveConfig" :loading="saving" :disabled="!isConfigValid">Save</v-btn>
+              </v-card-title>
               <v-card-text class="pt-0">
-                <div class="field-group">
-                  <label class="field-label">Email <span class="text-error">*</span></label>
-                  <v-text-field v-model="config.email" density="compact" :rules="[rules.required, rules.email]" hint="ACME account email for certificate notifications" persistent-hint />
-                </div>
-
-                <div class="field-group">
-                  <label class="field-label">Domains <span class="text-error">*</span></label>
-                  <v-text-field v-model="config.domains" density="compact" :rules="[rules.required]" hint="Comma-separated, e.g. example.com, *.example.com" persistent-hint placeholder="example.com, *.example.com" />
-                </div>
+                <v-row dense>
+                  <v-col cols="5">
+                    <div class="field-group">
+                      <label class="field-label">Email <span class="text-error">*</span></label>
+                      <v-text-field v-model="config.email" density="compact" :rules="[rules.required, rules.email]" hint="ACME account email" persistent-hint />
+                    </div>
+                  </v-col>
+                  <v-col cols="7">
+                    <div class="field-group">
+                      <label class="field-label">Domains <span class="text-error">*</span></label>
+                      <v-text-field v-model="config.domains" density="compact" :rules="[rules.required]" hint="Comma-separated, e.g. example.com, *.example.com" persistent-hint placeholder="example.com, *.example.com" />
+                    </div>
+                  </v-col>
+                </v-row>
 
                 <v-row dense>
-                  <v-col cols="7">
+                  <v-col cols="5">
                     <div class="field-group">
                       <label class="field-label">DNS Provider <span class="text-error">*</span></label>
                       <v-autocomplete v-model="config.dns_provider" :items="dnsProviders" density="compact" :rules="[rules.required]" hint="DNS-01 challenge provider" persistent-hint :placeholder="dnsProviders.length ? 'Select provider...' : 'Type provider name...'" />
                     </div>
                   </v-col>
-                  <v-col cols="5">
+                  <v-col cols="7">
                     <div class="field-group">
                       <label class="field-label">DNS Resolvers</label>
                       <v-text-field v-model="config.dns_resolvers" density="compact" :rules="[rules.dnsResolvers]" hint="e.g. 8.8.8.8:53" persistent-hint />
@@ -87,9 +99,7 @@
                 <div class="field-group">
                   <label class="field-label">Key Type</label>
                   <v-chip-group v-model="config.key_type" mandatory selected-class="text-primary" column>
-                    <v-chip v-for="kt in keyTypes" :key="kt" :value="kt" size="small" variant="outlined" filter>
-                      <div style="margin-top: 1px;">{{ kt }}</div>
-                    </v-chip>
+                    <v-chip v-for="kt in keyTypes" :key="kt" :value="kt" size="small" variant="outlined" filter>{{ kt }}</v-chip>
                   </v-chip-group>
                 </div>
 
@@ -108,7 +118,7 @@
                   <v-col cols="7">
                     <div class="field-group">
                       <label class="field-label">EAB HMAC <span class="text-error">*</span></label>
-                      <v-text-field v-model="config.eab_hmac" density="compact" :rules="[rules.required]" hint="Base64 URL MAC key" persistent-hint :type="showSecrets ? 'text' : 'password'" />
+                      <v-text-field v-model="config.eab_hmac" density="compact" :rules="[rules.required]" hint="Base64 URL MAC key" persistent-hint :type="showEabHmac ? 'text' : 'password'" :append-inner-icon="showEabHmac ? 'mdi-eye-off' : 'mdi-eye'" @click:append-inner="showEabHmac = !showEabHmac" />
                     </div>
                   </v-col>
                 </v-row>
@@ -118,7 +128,7 @@
                 <div class="text-caption font-weight-bold mb-1">Provider Environment Variables</div>
                 <div v-for="(_, key) in envVars" :key="key" class="d-flex ga-1 mb-1 align-center">
                   <v-text-field :model-value="key" density="compact" hide-details readonly style="max-width: 40%;" />
-                  <v-text-field v-model="envVars[key]" density="compact" hide-details :type="showSecrets ? 'text' : 'password'" />
+                  <v-text-field v-model="envVars[key]" density="compact" hide-details :type="envVarVisible[key] ? 'text' : 'password'" :append-inner-icon="envVarVisible[key] ? 'mdi-eye-off' : 'mdi-eye'" @click:append-inner="envVarVisible[key] = !envVarVisible[key]" />
                   <v-btn icon size="x-small" color="error" variant="text" @click="removeEnvVar(key)">
                     <v-icon size="16">mdi-delete</v-icon>
                   </v-btn>
@@ -130,27 +140,61 @@
                     <v-icon size="16">mdi-plus</v-icon>
                   </v-btn>
                 </div>
-                <div class="d-flex align-center justify-space-between mt-2">
-                  <v-switch v-model="showSecrets" label="Show values" density="compact" color="primary" hide-details />
-                  <v-btn color="primary" variant="flat" size="small" @click="saveConfig" :loading="saving" :disabled="!isConfigValid">Save</v-btn>
-                </div>
+
+                <v-divider class="my-3" />
+
+                <div class="text-caption font-weight-bold mb-1">Automation</div>
+                <v-row dense>
+                  <v-col cols="5">
+                    <div class="field-group">
+                      <label class="field-label">Auto mode</label>
+                      <v-select v-model="config.auto_mode" :items="[{ title: 'Disabled', value: false }, { title: 'Enabled', value: true }]" density="compact" hint="Auto-renew and install every 24h" persistent-hint />
+                    </div>
+                  </v-col>
+                  <v-col cols="7">
+                    <div class="field-group">
+                      <label class="field-label">Days before expiry</label>
+                      <v-text-field v-model.number="config.auto_days" type="number" density="compact" :rules="[rules.nonNegativeInt]" hint="Renew when cert expires within N days" persistent-hint :disabled="!config.auto_mode" />
+                    </div>
+                  </v-col>
+                </v-row>
               </v-card-text>
             </v-card>
           </v-col>
 
-          <!-- RIGHT: Log -->
+          <!-- RIGHT: Last Run + Log -->
           <v-col cols="12" md="7">
+            <v-card v-if="lastRun" class="mb-2">
+              <v-card-title class="d-flex align-center text-body-2 font-weight-bold py-2">
+                Last Run
+                <v-spacer />
+                <v-chip size="x-small" :color="lastRun.success ? 'success' : 'error'" variant="flat" class="mr-2">
+                  {{ lastRun.success ? 'Success' : 'Failed' }}
+                </v-chip>
+                <v-chip size="x-small" variant="tonal" class="mr-2">{{ lastRun.command }}</v-chip>
+                <v-btn size="x-small" variant="text" @click="showLastRunLog = !showLastRunLog">
+                  {{ showLastRunLog ? 'Hide' : 'Show log' }}
+                </v-btn>
+              </v-card-title>
+              <v-card-text class="pt-0 pb-2">
+                <div class="text-caption text-grey">{{ new Date(lastRun.created_at).toLocaleString() }}</div>
+                <div v-if="showLastRunLog" class="pa-2 mt-2 rounded" style="max-height: 200px; overflow-y: auto; background: #0d0d0d; font-family: monospace; font-size: 12px; line-height: 1.4;">
+                  <div v-for="(line, i) in lastRun.output.split('\n').filter((l: string) => l)" :key="i" :class="logLineClass(line)">{{ line }}</div>
+                </div>
+              </v-card-text>
+            </v-card>
+
             <v-card>
               <v-card-title class="d-flex align-center text-body-2 font-weight-bold py-2">
-                Log Output
+                Lego Log Output
                 <v-spacer />
                 <v-chip v-if="running" color="warning" size="x-small" variant="flat" class="mr-2">Running</v-chip>
                 <v-btn size="x-small" variant="text" @click="logLines = []">Clear</v-btn>
               </v-card-title>
               <v-card-text class="pt-0">
-                <div ref="logContainer" class="pa-2 rounded" style="height: calc(100vh - 100px); overflow-y: auto; background: #0d0d0d; font-family: monospace; font-size: 12px; line-height: 1.4;">
+                <div ref="logContainer" class="pa-2 rounded" style="max-height: 70vh; overflow-y: auto; background: #0d0d0d; font-family: monospace; font-size: 12px; line-height: 1.4;">
                   <div v-if="logLines.length === 0" class="text-grey">No output yet...</div>
-                  <div v-for="(line, i) in logLines" :key="i" :class="line.startsWith('ERROR') ? 'text-error' : 'text-grey-lighten-2'">{{ line }}</div>
+                  <div v-for="(line, i) in logLines" :key="i" :class="logLineClass(line)">{{ line }}</div>
                 </div>
               </v-card-text>
             </v-card>
@@ -230,8 +274,12 @@ const downloadPercent = ref(0)
 const downloadMessage = ref('')
 const running = ref(false)
 const saving = ref(false)
-const showSecrets = ref(false)
+const envVarVisible = reactive<Record<string, boolean>>({})
+const showEabHmac = ref(false)
 const showCertDialog = ref(false)
+const installing = ref(false)
+const showLastRunLog = ref(false)
+const lastRun = ref<{ id: number; created_at: string; command: string; success: boolean; output: string } | null>(null)
 const logLines = ref<string[]>([])
 const logContainer = ref<HTMLElement | null>(null)
 
@@ -246,6 +294,8 @@ const config = reactive({
   eab_enabled: false,
   eab_kid: '',
   eab_hmac: '',
+  auto_mode: false,
+  auto_days: 30,
 })
 
 const envVars = reactive<Record<string, string>>({})
@@ -268,6 +318,7 @@ const rules = {
   email: (v: string) => /.+@.+\..+/.test(v) || 'Invalid email',
   url: (v: string) => !v || /^https?:\/\/.+/.test(v) || 'Must be a valid URL (https://...)',
   dnsResolvers: (v: string) => !v || /^[\w.:, ]+$/.test(v) || 'Invalid format, e.g. 8.8.8.8:53',
+  nonNegativeInt: (v: number) => v >= 0 || 'Must be 0 or greater',
 }
 
 const isConfigValid = computed(() =>
@@ -287,6 +338,15 @@ function showMessage(text: string, color = 'success') {
   snackbarText.value = text
   snackbarColor.value = color
   snackbar.value = true
+}
+
+async function errorFromResponse(res: Response, fallback: string): Promise<string> {
+  try {
+    const data = await res.json()
+    return data.error || fallback
+  } catch {
+    return fallback
+  }
 }
 
 function addEnvVar() {
@@ -364,7 +424,7 @@ async function saveConfig() {
     if (res.ok) {
       showMessage('Configuration saved')
     } else {
-      showMessage('Failed to save', 'error')
+      showMessage(await errorFromResponse(res, 'Failed to save'), 'error')
     }
   } catch {
     showMessage('Failed to save', 'error')
@@ -378,7 +438,11 @@ async function downloadLego() {
   downloadPercent.value = 0
   downloadMessage.value = 'Starting download...'
   try {
-    await fetch(`${baseUrl}/download`, { method: 'POST' })
+    const res = await fetch(`${baseUrl}/download`, { method: 'POST' })
+    if (!res.ok) {
+      showMessage(await errorFromResponse(res, 'Failed to start download'), 'error')
+      downloading.value = false
+    }
   } catch {
     showMessage('Failed to start download', 'error')
     downloading.value = false
@@ -389,7 +453,11 @@ async function obtainCert() {
   running.value = true
   logLines.value.push('--- Starting certificate obtain ---')
   try {
-    await fetch(`${baseUrl}/obtain`, { method: 'POST' })
+    const res = await fetch(`${baseUrl}/obtain`, { method: 'POST' })
+    if (!res.ok) {
+      showMessage(await errorFromResponse(res, 'Failed to start obtain'), 'error')
+      running.value = false
+    }
   } catch {
     showMessage('Failed to start obtain', 'error')
     running.value = false
@@ -400,7 +468,11 @@ async function renewCert() {
   running.value = true
   logLines.value.push('--- Starting certificate renewal ---')
   try {
-    await fetch(`${baseUrl}/renew`, { method: 'POST' })
+    const res = await fetch(`${baseUrl}/renew`, { method: 'POST' })
+    if (!res.ok) {
+      showMessage(await errorFromResponse(res, 'Failed to start renewal'), 'error')
+      running.value = false
+    }
   } catch {
     showMessage('Failed to start renewal', 'error')
     running.value = false
@@ -422,8 +494,43 @@ async function stopLego() {
   }
 }
 
+async function installCert() {
+  installing.value = true
+  try {
+    const res = await fetch(`${baseUrl}/cert/install`, { method: 'POST' })
+    const data = await res.json()
+    if (res.ok) {
+      showMessage(data.message || 'Certificate installed to camera')
+    } else {
+      showMessage(data.error || 'Failed to install certificate', 'error')
+    }
+  } catch {
+    showMessage('Failed to install certificate', 'error')
+  } finally {
+    installing.value = false
+  }
+}
+
+async function fetchLastRun() {
+  try {
+    const res = await fetch(`${baseUrl}/runs/last`)
+    if (res.ok) {
+      lastRun.value = await res.json()
+    }
+  } catch { /* ignore */ }
+}
+
 function downloadCertFile(type: string) {
   window.open(`${baseUrl}/cert/download/${type}`, '_blank')
+}
+
+function logLineClass(line: string): string {
+  if (line.startsWith('ERROR') || line.includes('[ERROR]')) return 'log-error'
+  if (line.includes('[WARN]') || line.includes('[WARNING]')) return 'log-warn'
+  if (line.includes('[INFO]')) return 'log-info'
+  if (line.startsWith('---')) return 'log-marker'
+  if (line.startsWith('Running:')) return 'log-cmd'
+  return 'text-grey-lighten-2'
 }
 
 function appendLog(line: string) {
@@ -501,6 +608,7 @@ onMounted(() => {
   fetchConfig()
   fetchCertInfo()
   fetchProviders()
+  fetchLastRun()
   connectWebSocket()
 })
 
@@ -526,4 +634,9 @@ onUnmounted(() => {
   font-weight: 600;
   color: rgba(255, 255, 255, 0.7);
 }
+.log-error { color: #F44336; }
+.log-warn { color: #FF9800; }
+.log-info { color: #4CAF50; }
+.log-marker { color: #64B5F6; font-weight: 600; }
+.log-cmd { color: #CE93D8; }
 </style>

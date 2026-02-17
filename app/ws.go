@@ -37,18 +37,27 @@ func (h *WSHub) Unregister(c *websocket.Conn) {
 
 func (h *WSHub) Broadcast(msgType string, data interface{}) {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-
 	msg := WSMessage{Type: msgType, Data: data}
 	payload, err := json.Marshal(msg)
 	if err != nil {
+		h.mu.RUnlock()
 		return
 	}
 
+	var failed []*websocket.Conn
 	for client := range h.clients {
 		if err := client.WriteMessage(websocket.TextMessage, payload); err != nil {
+			failed = append(failed, client)
+		}
+	}
+	h.mu.RUnlock()
+
+	if len(failed) > 0 {
+		h.mu.Lock()
+		for _, client := range failed {
 			client.Close()
 			delete(h.clients, client)
 		}
+		h.mu.Unlock()
 	}
 }

@@ -3,10 +3,13 @@ package main
 import (
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/Cacsjep/goxis/pkg/acapapp"
+	"github.com/Cacsjep/goxis/pkg/dbus"
 	"github.com/gofiber/contrib/v3/websocket"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
@@ -16,10 +19,14 @@ import (
 )
 
 type LegoApplication struct {
-	acapp     *acapapp.AcapApplication
-	webserver *fiber.App
-	db        *gorm.DB
-	wsHub     *WSHub
+	acapp           *acapapp.AcapApplication
+	webserver       *fiber.App
+	db              *gorm.DB
+	wsHub           *WSHub
+	vapixUser       string
+	vapixPass       string
+	vapixReady      bool
+	autoRenewTicker *time.Ticker
 }
 
 func NewLegoApplication() *LegoApplication {
@@ -42,7 +49,7 @@ func (app *LegoApplication) Start() {
 	}
 	app.db = db
 
-	if err := db.AutoMigrate(&Config{}); err != nil {
+	if err := db.AutoMigrate(&Config{}, &RunHistory{}); err != nil {
 		app.acapp.Syslog.Critf("Failed to migrate database: %s", err)
 		return
 	}
@@ -54,11 +61,22 @@ func (app *LegoApplication) Start() {
 
 	app.wsHub = NewWSHub()
 
+	// Retrieve VAPIX credentials via D-Bus for cert installation
+	vapixUser, vapixPass, err := dbus.RetrieveVapixCredentials("root")
+	if err != nil {
+		app.acapp.Syslog.Infof("Could not retrieve VAPIX credentials: %s (cert install will be unavailable)", err)
+	} else {
+		app.vapixUser = vapixUser
+		app.vapixPass = vapixPass
+		app.vapixReady = true
+		app.acapp.Syslog.Info("VAPIX credentials retrieved successfully")
+	}
+
 	if !IsLegoReady() {
 		app.acapp.Syslog.Info("Lego binary not found, downloading...")
 		go func() {
 			if err := DownloadLego(app.wsHub); err != nil {
-				app.acapp.Syslog.Critf("Auto-download of lego failed: %s", err)
+				app.acapp.Syslog.Errorf("Auto-download of lego failed: %s", err)
 			} else {
 				app.acapp.Syslog.Info("Lego binary downloaded successfully")
 			}
@@ -69,7 +87,12 @@ func (app *LegoApplication) Start() {
 	app.webserver.Use(cors.New())
 	app.setupRoutes()
 
+	app.startAutoRenew()
+
 	app.acapp.OnCloseCleaners = append(app.acapp.OnCloseCleaners, func() {
+		if app.autoRenewTicker != nil {
+			app.autoRenewTicker.Stop()
+		}
 		app.webserver.Shutdown()
 	})
 
@@ -78,6 +101,76 @@ func (app *LegoApplication) Start() {
 	app.acapp.Syslog.Infof("Starting web server on %s", ListenAddr)
 	if err := app.webserver.Listen(ListenAddr); err != nil {
 		app.acapp.Syslog.Critf("Web server error: %s", err)
+	}
+}
+
+func (app *LegoApplication) startAutoRenew() {
+	// Initial check after 30s delay (give time for lego download on first boot)
+	go func() {
+		time.Sleep(30 * time.Second)
+		app.checkAndAutoRenew()
+	}()
+
+	// Daily check
+	app.autoRenewTicker = time.NewTicker(24 * time.Hour)
+	go func() {
+		for range app.autoRenewTicker.C {
+			app.checkAndAutoRenew()
+		}
+	}()
+}
+
+func (app *LegoApplication) checkAndAutoRenew() {
+	config, err := GetConfig(app.db)
+	if err != nil || !config.AutoMode {
+		return
+	}
+	if !IsLegoReady() {
+		return
+	}
+
+	parts := splitDomains(config.Domains)
+	if len(parts) == 0 {
+		return
+	}
+	domain := parts[0]
+
+	certFile := legoCertsPath + "/certificates/" + domain + ".crt"
+	days, err := getCertDaysRemaining(certFile)
+	if err != nil {
+		return // no cert yet or can't parse
+	}
+
+	app.acapp.Syslog.Infof("Certificate expires in %d days (threshold: %d)", days, config.AutoDays)
+
+	if days > config.AutoDays {
+		return
+	}
+
+	// Auto-renew
+	app.acapp.Syslog.Infof("Auto-renewing certificate (expires in %d days)", days)
+	output, err := RunLego(config, app.wsHub, "renew", app.acapp.Syslog.Infof)
+	SaveRunHistory(app.db, "auto-renew", err == nil, output)
+
+	if err != nil {
+		app.acapp.Syslog.Errorf("Auto-renew failed: %s", err)
+		return
+	}
+
+	// Auto-install
+	if !app.vapixReady {
+		app.acapp.Syslog.Infof("Skipping auto-install: VAPIX credentials not available")
+		return
+	}
+	app.acapp.Syslog.Infof("Auto-installing certificate for %s", domain)
+	if err := InstallCertToCamera(app.vapixUser, app.vapixPass, domain); err != nil {
+		app.acapp.Syslog.Errorf("Auto-install failed: %s", err)
+		SaveRunHistory(app.db, "auto-install", false, err.Error())
+		app.wsHub.Broadcast("lego_error", map[string]string{"error": "Auto-install failed: " + err.Error()})
+	} else {
+		app.acapp.Syslog.Infof("Auto-install successful for %s", domain)
+		SaveRunHistory(app.db, "auto-install", true, "Certificate installed successfully")
+		app.wsHub.Broadcast("lego_complete", map[string]string{"message": "Certificate auto-installed to camera"})
 	}
 }
 
@@ -114,10 +207,9 @@ func (app *LegoApplication) setupRoutes() {
 	api.Get("/providers", func(c fiber.Ctx) error {
 		providers, err := GetDNSProviders()
 		if err != nil || len(providers) == 0 {
-			// Try extracting on-demand if binary exists but providers.json is missing/empty
 			if IsLegoReady() {
 				if extractErr := extractDNSProviders(); extractErr != nil {
-					app.acapp.Syslog.Infof("Failed to extract DNS providers: %s", extractErr)
+					app.acapp.Syslog.Errorf("Failed to extract DNS providers: %s", extractErr)
 					return c.JSON([]string{})
 				}
 				providers, err = GetDNSProviders()
@@ -157,7 +249,7 @@ func (app *LegoApplication) setupRoutes() {
 	api.Post("/download", func(c fiber.Ctx) error {
 		go func() {
 			if err := DownloadLego(app.wsHub); err != nil {
-				app.acapp.Syslog.Critf("Lego download failed: %s", err)
+				app.acapp.Syslog.Errorf("Lego download failed: %s", err)
 			}
 		}()
 		return c.JSON(fiber.Map{"message": "Download started"})
@@ -169,8 +261,10 @@ func (app *LegoApplication) setupRoutes() {
 			return c.Status(400).JSON(fiber.Map{"error": "No config found"})
 		}
 		go func() {
-			if err := RunLego(config, app.wsHub, "obtain", app.acapp.Syslog.Infof); err != nil {
-				app.acapp.Syslog.Critf("Lego obtain failed: %s", err)
+			output, err := RunLego(config, app.wsHub, "obtain", app.acapp.Syslog.Infof)
+			SaveRunHistory(app.db, "obtain", err == nil, output)
+			if err != nil {
+				app.acapp.Syslog.Errorf("Lego obtain failed: %s", err)
 			}
 		}()
 		return c.JSON(fiber.Map{"message": "Certificate obtain started"})
@@ -182,11 +276,21 @@ func (app *LegoApplication) setupRoutes() {
 			return c.Status(400).JSON(fiber.Map{"error": "No config found"})
 		}
 		go func() {
-			if err := RunLego(config, app.wsHub, "renew", app.acapp.Syslog.Infof); err != nil {
-				app.acapp.Syslog.Critf("Lego renew failed: %s", err)
+			output, err := RunLego(config, app.wsHub, "renew", app.acapp.Syslog.Infof)
+			SaveRunHistory(app.db, "renew", err == nil, output)
+			if err != nil {
+				app.acapp.Syslog.Errorf("Lego renew failed: %s", err)
 			}
 		}()
 		return c.JSON(fiber.Map{"message": "Certificate renewal started"})
+	})
+
+	api.Get("/runs/last", func(c fiber.Ctx) error {
+		run, err := GetLastRun(app.db)
+		if err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "No runs yet"})
+		}
+		return c.JSON(run)
 	})
 
 	api.Get("/cert", func(c fiber.Ctx) error {
@@ -262,6 +366,29 @@ func (app *LegoApplication) setupRoutes() {
 		return c.SendFile(filePath)
 	})
 
+	api.Post("/cert/install", func(c fiber.Ctx) error {
+		if !app.vapixReady {
+			return c.Status(500).JSON(fiber.Map{"error": "VAPIX credentials not available"})
+		}
+		config, err := GetConfig(app.db)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "No config found"})
+		}
+		domain := config.Domains
+		parts := splitDomains(domain)
+		if len(parts) > 0 {
+			domain = parts[0]
+		}
+
+		app.acapp.Syslog.Infof("Installing certificate for %s to camera", domain)
+		if err := InstallCertToCamera(app.vapixUser, app.vapixPass, domain); err != nil {
+			app.acapp.Syslog.Errorf("Failed to install certificate: %s", err)
+			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		}
+		app.acapp.Syslog.Infof("Certificate for %s installed successfully", domain)
+		return c.JSON(fiber.Map{"message": "Certificate installed to camera"})
+	})
+
 	app.webserver.Use("/", static.New("./html"))
 }
 
@@ -281,6 +408,22 @@ func splitDomains(domains string) []string {
 	return result
 }
 
+func getCertDaysRemaining(certPath string) (int, error) {
+	data, err := os.ReadFile(certPath)
+	if err != nil {
+		return 0, err
+	}
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return 0, fmt.Errorf("failed to decode certificate PEM")
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return 0, err
+	}
+	return int(time.Until(cert.NotAfter).Hours() / 24), nil
+}
+
 func parseCertInfo(certPath string) (map[string]interface{}, error) {
 	data, err := os.ReadFile(certPath)
 	if err != nil {
@@ -288,7 +431,7 @@ func parseCertInfo(certPath string) (map[string]interface{}, error) {
 	}
 	block, _ := pem.Decode(data)
 	if block == nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to decode certificate PEM")
 	}
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {

@@ -264,9 +264,9 @@ func IsLegoRunning() bool {
 	return legoCmd != nil && legoCmd.Process != nil
 }
 
-func RunLego(config *Config, hub *WSHub, command string, logf LogFunc) error {
+func RunLego(config *Config, hub *WSHub, command string, logf LogFunc) (string, error) {
 	if !IsLegoReady() {
-		return fmt.Errorf("lego binary not found, please download first")
+		return "", fmt.Errorf("lego binary not found, please download first")
 	}
 
 	args := []string{
@@ -303,7 +303,7 @@ func RunLego(config *Config, hub *WSHub, command string, logf LogFunc) error {
 	case "renew":
 		args = append(args, "renew", "--days", "30")
 	default:
-		return fmt.Errorf("unknown command: %s", command)
+		return "", fmt.Errorf("unknown command: %s", command)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -324,7 +324,7 @@ func RunLego(config *Config, hub *WSHub, command string, logf LogFunc) error {
 
 	envVars := make(map[string]string)
 	if err := json.Unmarshal([]byte(config.EnvVars), &envVars); err != nil {
-		return fmt.Errorf("failed to parse env vars: %w", err)
+		return "", fmt.Errorf("failed to parse env vars: %w", err)
 	}
 
 	cmd.Env = os.Environ()
@@ -334,17 +334,20 @@ func RunLego(config *Config, hub *WSHub, command string, logf LogFunc) error {
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf("failed to get stdout pipe: %w", err)
+		return "", fmt.Errorf("failed to get stdout pipe: %w", err)
 	}
 	cmd.Stderr = cmd.Stdout
+
+	var outputBuf strings.Builder
 
 	cmdLine := fmt.Sprintf("Running: lego %s", strings.Join(args, " "))
 	hub.Broadcast("lego_output", map[string]string{"line": cmdLine})
 	logf("[lego] %s", cmdLine)
+	outputBuf.WriteString(cmdLine + "\n")
 
 	if err := cmd.Start(); err != nil {
 		hub.Broadcast("lego_error", map[string]string{"error": err.Error()})
-		return fmt.Errorf("failed to start lego: %w", err)
+		return outputBuf.String(), fmt.Errorf("failed to start lego: %w", err)
 	}
 
 	scanner := bufio.NewScanner(stdout)
@@ -352,19 +355,22 @@ func RunLego(config *Config, hub *WSHub, command string, logf LogFunc) error {
 		line := scanner.Text()
 		hub.Broadcast("lego_output", map[string]string{"line": line})
 		logf("[lego] %s", line)
+		outputBuf.WriteString(line + "\n")
 	}
+
+	output := outputBuf.String()
 
 	if err := cmd.Wait(); err != nil {
 		if ctx.Err() != nil {
 			logf("[lego] Process stopped by user")
-			return nil
+			return output, nil
 		}
 		hub.Broadcast("lego_error", map[string]string{"error": err.Error()})
-		return fmt.Errorf("lego exited with error: %w", err)
+		return output, fmt.Errorf("lego exited with error: %w", err)
 	}
 
 	msg := fmt.Sprintf("Certificate %s completed successfully", command)
 	hub.Broadcast("lego_complete", map[string]string{"message": msg})
 	logf("[lego] %s", msg)
-	return nil
+	return output, nil
 }

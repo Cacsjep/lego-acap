@@ -1,6 +1,13 @@
 {
 	"schemaVersion": "1.7.0",
 	"resources": {
+		"linux": {
+            "user": {
+                "groups": [
+                    "operator"
+                ]
+            }
+        },
         "dbus": {
             "requiredMethods": [
                 "com.axis.HTTPConf1.VAPIXServiceAccounts1.GetCredentials"
@@ -14,10 +21,6 @@
 			"embeddedSdkVersion": "3.0",
 			"friendlyName": "Lego ACAP - ACME Certificates",
 			"runMode": "respawn",
-			"user": {
-				"group": "sdk",
-				"username": "sdk"
-			},
 			"version": "0.0.1"
 		},
 		"configuration": {
