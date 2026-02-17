@@ -21,7 +21,7 @@
 			"embeddedSdkVersion": "3.0",
 			"friendlyName": "Lego ACAP - ACME Certificates",
 			"runMode": "respawn",
-			"version": "0.0.1"
+			"version": "0.0.2"
 		},
 		"configuration": {
 			"settingPage": "index.html",

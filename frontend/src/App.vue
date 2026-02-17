@@ -7,7 +7,12 @@
         </div>
       </template>
 
-      <v-app-bar-title class="text-body-2 font-weight-bold">Lego ACAP</v-app-bar-title>
+      <v-app-bar-title class="text-body-2 font-weight-bold">
+        Lego ACAP
+        <v-btn icon size="x-small" variant="text" @click="showHelpDialog = true" class="ml-1">
+          <v-icon size="16">mdi-help-circle-outline</v-icon>
+        </v-btn>
+      </v-app-bar-title>
 
       <template v-slot:append>
         <div class="d-flex align-center ga-2">
@@ -250,6 +255,200 @@
       </v-card>
     </v-dialog>
 
+    <!-- Help dialog -->
+    <v-dialog v-model="showHelpDialog" max-width="680" scrollable>
+      <v-card class="help-dialog">
+        <v-toolbar color="primary" density="compact">
+          <v-icon class="ml-4">mdi-book-open-variant</v-icon>
+          <v-toolbar-title class="text-body-1 font-weight-bold ml-2">Lego ACAP Guide</v-toolbar-title>
+          <v-spacer />
+          <v-btn icon variant="text" @click="showHelpDialog = false"><v-icon>mdi-close</v-icon></v-btn>
+        </v-toolbar>
+
+        <v-card-text class="help-content pa-5">
+
+          <!-- Toolbar Actions -->
+          <div class="mb-5">
+            <div class="d-flex align-center mb-3">
+              <v-icon color="info" class="mr-2" size="20">mdi-gesture-tap-button</v-icon>
+              <span class="help-heading">Toolbar Actions</span>
+            </div>
+            <div class="help-item">
+              <div class="help-item-header">
+                <div :style="{ width: '10px', height: '10px', borderRadius: '50%', background: '#4CAF50', display: 'inline-block' }" />
+                <span class="ml-2">Connection Indicator</span>
+              </div>
+              <div class="help-item-body">Green when the WebSocket is connected, red when disconnected. Reconnects automatically every 3 seconds.</div>
+            </div>
+            <div class="help-item">
+              <div class="help-item-header">
+                <v-icon size="14" color="success" class="mr-1">mdi-certificate</v-icon>
+                Certificate Chip
+              </div>
+              <div class="help-item-body">Displays the primary domain. Click to open certificate details with issuer, validity dates, SAN, and download options for <code>.crt</code>, <code>.key</code>, and <code>.issuer.crt</code> files.</div>
+            </div>
+            <div class="help-item">
+              <div class="help-item-header">
+                <v-icon size="14" color="warning" class="mr-1">mdi-download</v-icon>
+                Download
+              </div>
+              <div class="help-item-body">Downloads the lego binary from GitHub for the camera's architecture. Progress is shown in real-time. Button turns green with "Binary ready" once available.</div>
+            </div>
+            <div class="help-item">
+              <div class="help-item-header">
+                <v-icon size="14" color="success" class="mr-1">mdi-certificate</v-icon>
+                Obtain
+              </div>
+              <div class="help-item-body">Issues a brand-new certificate. Requires the lego binary and a saved configuration. Runs <code>lego run</code> in the background.</div>
+            </div>
+            <div class="help-item">
+              <div class="help-item-header">
+                <v-icon size="14" color="secondary" class="mr-1">mdi-refresh</v-icon>
+                Renew
+              </div>
+              <div class="help-item-body">Renews an existing certificate. Only enabled when a certificate is already present. Runs <code>lego renew</code> in the background.</div>
+            </div>
+            <div class="help-item">
+              <div class="help-item-header">
+                <v-icon size="14" color="info" class="mr-1">mdi-upload</v-icon>
+                Install
+              </div>
+              <div class="help-item-body">Uploads the certificate to the camera via VAPIX and sets it as the active HTTPS certificate. Each install uses a unique ID; old certificates are cleaned up automatically.</div>
+            </div>
+            <div class="help-item">
+              <div class="help-item-header">
+                <v-icon size="14" color="error" class="mr-1">mdi-stop-circle</v-icon>
+                Stop
+              </div>
+              <div class="help-item-body">Cancels a running lego process. Only visible while an obtain or renew is in progress.</div>
+            </div>
+          </div>
+
+          <!-- Configuration -->
+          <div class="mb-5">
+            <div class="d-flex align-center mb-3">
+              <v-icon color="orange" class="mr-2" size="20">mdi-cog</v-icon>
+              <span class="help-heading">Configuration</span>
+            </div>
+
+            <div class="help-field">
+              <div class="help-field-name">Email <v-chip size="x-small" color="error" variant="flat" class="ml-1">Required</v-chip></div>
+              <div class="help-field-desc">ACME account email. Your CA sends certificate expiry notifications here.</div>
+            </div>
+            <div class="help-field">
+              <div class="help-field-name">Domains <v-chip size="x-small" color="error" variant="flat" class="ml-1">Required</v-chip></div>
+              <div class="help-field-desc">Comma-separated domain list. First domain = certificate common name. Wildcards supported: <code>*.example.com</code></div>
+            </div>
+            <div class="help-field">
+              <div class="help-field-name">DNS Provider <v-chip size="x-small" color="error" variant="flat" class="ml-1">Required</v-chip></div>
+              <div class="help-field-desc">DNS provider for DNS-01 challenge. 100+ providers supported. The list is extracted from the lego binary after download.</div>
+            </div>
+            <div class="help-field">
+              <div class="help-field-name">DNS Resolvers</div>
+              <div class="help-field-desc">Resolver for propagation checks. Format: <code>host:port</code>. Default: <code>8.8.8.8:53</code></div>
+            </div>
+            <div class="help-field">
+              <div class="help-field-name">CA Server</div>
+              <div class="help-field-desc">ACME directory URL. Defaults to Let's Encrypt production. For testing use:<br/><code>https://acme-staging-v02.api.letsencrypt.org/directory</code></div>
+            </div>
+            <div class="help-field">
+              <div class="help-field-name">Key Type</div>
+              <div class="help-field-desc">Private key algorithm. Choose from <code>ec256</code>, <code>ec384</code>, <code>rsa2048</code>, <code>rsa4096</code>. Default: <code>ec256</code></div>
+            </div>
+          </div>
+
+          <!-- EAB -->
+          <div class="mb-5">
+            <div class="d-flex align-center mb-3">
+              <v-icon color="purple" class="mr-2" size="20">mdi-shield-key</v-icon>
+              <span class="help-heading">External Account Binding (EAB)</span>
+            </div>
+            <p>Some CAs require EAB for account registration. Enable the toggle and enter the credentials from your CA.</p>
+            <div class="help-field">
+              <div class="help-field-name">EAB Key ID</div>
+              <div class="help-field-desc">Key identifier provided by your CA (e.g. ZeroSSL, Google Trust Services, Sectigo).</div>
+            </div>
+            <div class="help-field">
+              <div class="help-field-name">EAB HMAC</div>
+              <div class="help-field-desc">Base64 URL-encoded MAC key. Click the <v-icon size="12">mdi-eye</v-icon> icon to reveal the value.</div>
+            </div>
+          </div>
+
+          <!-- Env Vars -->
+          <div class="mb-5">
+            <div class="d-flex align-center mb-3">
+              <v-icon color="teal" class="mr-2" size="20">mdi-key-variant</v-icon>
+              <span class="help-heading">Provider Environment Variables</span>
+            </div>
+            <p>Each DNS provider needs specific API credentials. These are passed as environment variables to the lego process.</p>
+            <div class="help-callout-sm">
+              <strong>Examples:</strong>
+              <code>CF_DNS_API_TOKEN</code> for Cloudflare,
+              <code>AWS_ACCESS_KEY_ID</code> + <code>AWS_SECRET_ACCESS_KEY</code> for Route53
+            </div>
+            <p>All values are masked by default. Use the <v-icon size="12">mdi-eye</v-icon> icon to toggle visibility. See the <a href="https://go-acme.github.io/lego/dns/" target="_blank">lego DNS provider docs</a> for your provider's requirements.</p>
+          </div>
+
+          <!-- Automation -->
+          <div class="mb-5">
+            <div class="d-flex align-center mb-3">
+              <v-icon color="cyan" class="mr-2" size="20">mdi-autorenew</v-icon>
+              <span class="help-heading">Automation</span>
+            </div>
+            <div class="help-field">
+              <div class="help-field-name">Auto Mode</div>
+              <div class="help-field-desc">When enabled, the app checks every 24 hours whether the certificate needs renewal. If it expires within the configured threshold, it renews and installs automatically. An initial check runs 30 seconds after app startup.</div>
+            </div>
+            <div class="help-field">
+              <div class="help-field-name">Days Before Expiry</div>
+              <div class="help-field-desc">Renewal threshold in days. Certificate is renewed when it expires within this window. Default: <code>30</code> days.</div>
+            </div>
+          </div>
+
+          <!-- Install Process -->
+          <div class="mb-5">
+            <div class="d-flex align-center mb-3">
+              <v-icon color="blue" class="mr-2" size="20">mdi-lan-connect</v-icon>
+              <span class="help-heading">Camera Installation Process</span>
+            </div>
+            <div class="help-steps">
+              <div class="help-step">
+                <div class="help-step-num" style="background: #1976D2;">1</div>
+                <div>Uploads certificate + private key to the camera via VAPIX <code>LoadCertificateWithPrivateKey</code></div>
+              </div>
+              <div class="help-step">
+                <div class="help-step-num" style="background: #1976D2;">2</div>
+                <div>Configures HTTPS to use the new certificate via <code>SetWebServerTlsConfiguration</code></div>
+              </div>
+              <div class="help-step">
+                <div class="help-step-num" style="background: #1976D2;">3</div>
+                <div>Cleans up old <code>lego-*</code> certificates from the camera</div>
+              </div>
+            </div>
+            <p class="mt-2 text-caption text-grey">VAPIX credentials are retrieved via D-Bus at startup. If unavailable, the Install button and auto-install are disabled.</p>
+          </div>
+
+          <!-- Log -->
+          <div>
+            <div class="d-flex align-center mb-3">
+              <v-icon color="grey" class="mr-2" size="20">mdi-console</v-icon>
+              <span class="help-heading">Log Output</span>
+            </div>
+            <p>Streams real-time output from the lego process via WebSocket. The <strong>Last Run</strong> panel stores output from the most recent operation for review.</p>
+            <div class="d-flex align-center flex-wrap ga-2 mt-2">
+              <span class="text-caption text-grey mr-1">Color coding:</span>
+              <v-chip size="x-small" color="error" variant="tonal">ERROR</v-chip>
+              <v-chip size="x-small" color="warning" variant="tonal">WARN</v-chip>
+              <v-chip size="x-small" color="success" variant="tonal">INFO</v-chip>
+              <v-chip size="x-small" color="info" variant="tonal">--- Markers ---</v-chip>
+              <v-chip size="x-small" color="purple" variant="tonal">Running: command</v-chip>
+            </div>
+          </div>
+
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">
       {{ snackbarText }}
     </v-snackbar>
@@ -305,6 +504,7 @@ const saving = ref(false)
 const envVarVisible = reactive<Record<string, boolean>>({})
 const showEabHmac = ref(false)
 const showCertDialog = ref(false)
+const showHelpDialog = ref(false)
 const installing = ref(false)
 const showLastRunLog = ref(false)
 const lastRun = ref<LastRun | null>(null)
@@ -658,6 +858,21 @@ onUnmounted(() => {
   font-weight: 600;
   color: rgba(255, 255, 255, 0.7);
 }
+.help-content p { font-size: 0.85rem; margin-bottom: 6px; line-height: 1.5; }
+.help-content a { color: rgb(var(--v-theme-primary)); }
+.help-content code { background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 3px; font-size: 0.8rem; }
+.help-heading { font-size: 0.95rem; font-weight: 700; letter-spacing: 0.02em; }
+.help-callout { background: rgba(76, 175, 80, 0.08); border: 1px solid rgba(76, 175, 80, 0.25); border-radius: 8px; padding: 16px; }
+.help-callout-sm { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; padding: 10px 14px; margin: 8px 0; font-size: 0.85rem; }
+.help-steps { display: flex; flex-direction: column; gap: 10px; }
+.help-step { display: flex; align-items: flex-start; gap: 12px; font-size: 0.85rem; line-height: 1.5; }
+.help-step-num { min-width: 24px; height: 24px; border-radius: 50%; background: #4CAF50; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; flex-shrink: 0; }
+.help-item { border-left: 3px solid rgba(255, 255, 255, 0.1); padding: 6px 0 6px 12px; margin-bottom: 8px; }
+.help-item-header { font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; margin-bottom: 2px; }
+.help-item-body { font-size: 0.82rem; color: rgba(255, 255, 255, 0.65); line-height: 1.5; }
+.help-field { background: rgba(255, 255, 255, 0.03); border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; }
+.help-field-name { font-size: 0.85rem; font-weight: 600; margin-bottom: 2px; display: flex; align-items: center; }
+.help-field-desc { font-size: 0.82rem; color: rgba(255, 255, 255, 0.6); line-height: 1.5; }
 .log-error { color: #F44336; }
 .log-warn { color: #FF9800; }
 .log-info { color: #4CAF50; }
