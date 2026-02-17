@@ -1,0 +1,39 @@
+{
+	"schemaVersion": "1.7.0",
+	"resources": {
+        "dbus": {
+            "requiredMethods": [
+                "com.axis.HTTPConf1.VAPIXServiceAccounts1.GetCredentials"
+            ]
+        }
+    },
+	"acapPackageConf": {
+		"setup": {
+			"appName": "legoacap",
+			"vendor": "Christoph Acs",
+			"embeddedSdkVersion": "3.0",
+			"friendlyName": "Lego ACAP - ACME Certificates",
+			"runMode": "respawn",
+			"user": {
+				"group": "sdk",
+				"username": "sdk"
+			},
+			"version": "0.0.1"
+		},
+		"configuration": {
+			"settingPage": "index.html",
+			"reverseProxy": [
+				{
+					"apiPath": "legoacap",
+					"target": "http://localhost:8741",
+					"access": "admin"
+				},
+				{
+					"apiPath": "legoacap_ws",
+					"target": "ws://localhost:8741",
+					"access": "admin"
+				}
+			]
+		}
+	}
+}
