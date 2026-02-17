@@ -268,7 +268,6 @@ const wsUrl = isDev
 
 const wsConnected = ref(false)
 const legoReady = ref(false)
-const arch = ref('')
 const downloading = ref(false)
 const downloadPercent = ref(0)
 const downloadMessage = ref('')
@@ -379,7 +378,6 @@ async function fetchStatus() {
     const data = await res.json()
     legoReady.value = data.lego_ready
     running.value = data.lego_running
-    arch.value = data.arch
   } catch { /* ignore */ }
 }
 
@@ -592,11 +590,13 @@ function connectWebSocket() {
           appendLog('--- ' + (msg.data.message || 'Done') + ' ---')
           showMessage(msg.data.message || 'Done')
           fetchCertInfo()
+          fetchLastRun()
           break
         case 'lego_error':
           running.value = false
           appendLog('ERROR: ' + (msg.data.error || 'Unknown error'))
           showMessage(msg.data.error || 'Lego error', 'error')
+          fetchLastRun()
           break
       }
     } catch { /* ignore */ }

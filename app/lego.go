@@ -301,7 +301,7 @@ func RunLego(config *Config, hub *WSHub, command string, logf LogFunc) (string, 
 	case "obtain":
 		args = append(args, "run")
 	case "renew":
-		args = append(args, "renew", "--days", "30")
+		args = append(args, "renew", "--days", "36500")
 	default:
 		return "", fmt.Errorf("unknown command: %s", command)
 	}

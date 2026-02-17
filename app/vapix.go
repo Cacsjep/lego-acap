@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/Cacsjep/goxis/pkg/vapix"
 )
@@ -74,7 +75,8 @@ func vapixSOAPPost(username, password, body string) ([]byte, error) {
 }
 
 // InstallCertToCamera uploads the lego certificate and private key to the camera
-// and configures it as the HTTPS certificate.
+// and configures it as the HTTPS certificate. Uses a timestamped cert ID so each
+// install gets a unique ID, then cleans up old lego- certs after switching HTTPS.
 func InstallCertToCamera(username, password, domain string) error {
 	certFile := legoCertsPath + "/certificates/" + domain + ".crt"
 	keyFile := legoCertsPath + "/certificates/" + domain + ".key"
@@ -108,15 +110,10 @@ func InstallCertToCamera(username, password, domain string) error {
 	}
 	keyB64 := base64.StdEncoding.EncodeToString(pkcs8Key)
 
-	certID := legoCertIDPrefix + sanitizeCertID(domain)
-	if len(certID) > 32 {
-		certID = certID[:32]
-	}
+	// Generate unique cert ID with timestamp (e.g. "lego-260215143025")
+	certID := legoCertIDPrefix + time.Now().Format("060102150405")
 
-	// Step 1: Delete old lego cert if exists (ignore errors)
-	deleteCert(username, password, certID)
-
-	// Step 2: Upload certificate with private key
+	// Step 1: Upload new certificate with unique ID
 	uploadBody := fmt.Sprintf(`
     <tds:LoadCertificateWithPrivateKey xmlns="http://www.onvif.org/ver10/device/wsdl">
       <CertificateWithPrivateKey>
@@ -130,13 +127,13 @@ func InstallCertToCamera(username, password, domain string) error {
 		return fmt.Errorf("failed to upload certificate: %w", err)
 	}
 
-	// Step 3: Fetch available ciphers
+	// Step 2: Fetch available ciphers
 	ciphers, err := fetchCiphers(username, password)
 	if err != nil {
 		return fmt.Errorf("failed to fetch ciphers: %w", err)
 	}
 
-	// Step 4: Set as HTTPS certificate
+	// Step 3: Set HTTPS to use the new certificate
 	var cipherXML string
 	for _, c := range ciphers {
 		c = strings.TrimSpace(c)
@@ -164,7 +161,57 @@ func InstallCertToCamera(username, password, domain string) error {
 		return fmt.Errorf("failed to set HTTPS configuration: %w", err)
 	}
 
+	// Step 4: Clean up old lego- certs (best-effort, the new cert is already active)
+	cleanupOldLegoCerts(username, password, certID)
+
 	return nil
+}
+
+// cleanupOldLegoCerts lists all certificates on the camera and deletes any
+// with IDs starting with "lego-" that aren't the current active cert.
+func cleanupOldLegoCerts(username, password, currentCertID string) {
+	ids, err := listCertificateIDs(username, password)
+	if err != nil {
+		return
+	}
+	for _, id := range ids {
+		if strings.HasPrefix(id, legoCertIDPrefix) && id != currentCertID {
+			deleteCert(username, password, id)
+		}
+	}
+}
+
+// listCertificateIDs retrieves all certificate IDs from the camera via ONVIF GetCertificates.
+func listCertificateIDs(username, password string) ([]string, error) {
+	body := `<tds:GetCertificates xmlns="http://www.onvif.org/ver10/device/wsdl"/>`
+	resp, err := vapixSOAPPost(username, password, body)
+	if err != nil {
+		return nil, err
+	}
+	return extractCertIDs(string(resp)), nil
+}
+
+// extractCertIDs parses certificate IDs from a GetCertificates SOAP response.
+func extractCertIDs(xml string) []string {
+	var ids []string
+	search := xml
+	for {
+		start := strings.Index(search, "<tt:CertificateID>")
+		if start < 0 {
+			break
+		}
+		start += len("<tt:CertificateID>")
+		end := strings.Index(search[start:], "</tt:CertificateID>")
+		if end < 0 {
+			break
+		}
+		id := strings.TrimSpace(search[start : start+end])
+		if id != "" {
+			ids = append(ids, id)
+		}
+		search = search[start+end:]
+	}
+	return ids
 }
 
 func deleteCert(username, password, certID string) {
@@ -217,11 +264,6 @@ func toPKCS8(block *pem.Block) ([]byte, error) {
 		return nil, err
 	}
 	return x509.MarshalPKCS8PrivateKey(key)
-}
-
-func sanitizeCertID(domain string) string {
-	r := strings.NewReplacer(".", "-", "*", "wc")
-	return r.Replace(domain)
 }
 
 func xmlEscape(s string) string {

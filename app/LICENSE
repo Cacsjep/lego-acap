@@ -19,3 +19,35 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+--------------------------------------------------------------------------------
+Third-Party Licenses
+--------------------------------------------------------------------------------
+
+This software uses the following third-party packages:
+
+Runtime binary (downloaded, not compiled in):
+  go-acme/lego             MIT          https://github.com/go-acme/lego
+
+Go dependencies (compiled into binary):
+  gofiber/fiber             MIT          https://github.com/gofiber/fiber
+  gofiber/contrib           MIT          https://github.com/gofiber/contrib
+  gorm.io/gorm              MIT          https://github.com/go-gorm/gorm
+  gorm.io/driver/sqlite     MIT          https://github.com/go-gorm/sqlite
+  mattn/go-sqlite3          MIT          https://github.com/mattn/go-sqlite3
+  valyala/fasthttp          MIT          https://github.com/valyala/fasthttp
+  fasthttp/websocket        MIT          https://github.com/fasthttp/websocket
+  gorilla/websocket         BSD-2-Clause https://github.com/gorilla/websocket
+  godbus/dbus               BSD-2-Clause https://github.com/godbus/dbus
+  google/uuid               BSD-3-Clause https://github.com/google/uuid
+  klauspost/compress        BSD-3-Clause https://github.com/klauspost/compress
+  andybalholm/brotli        MIT          https://github.com/andybalholm/brotli
+  golang.org/x/crypto       BSD-3-Clause https://github.com/golang/crypto
+  golang.org/x/net          BSD-3-Clause https://github.com/golang/net
+  golang.org/x/sys          BSD-3-Clause https://github.com/golang/sys
+  golang.org/x/text         BSD-3-Clause https://github.com/golang/text
+
+Frontend dependencies (bundled into JS):
+  Vue                       MIT          https://github.com/vuejs/core
+  Vuetify                   MIT          https://github.com/vuetifyjs/vuetify
+  Material Design Icons     Apache-2.0   https://github.com/Templarian/MaterialDesign
