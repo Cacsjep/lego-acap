@@ -129,11 +129,10 @@ func (app *LegoApplication) checkAndAutoRenew() {
 		return
 	}
 
-	parts := splitDomains(config.Domains)
-	if len(parts) == 0 {
+	domain := primaryDomain(config)
+	if domain == "" {
 		return
 	}
-	domain := parts[0]
 
 	certFile := legoCertsPath + "/certificates/" + domain + ".crt"
 	days, err := getCertDaysRemaining(certFile)
@@ -166,11 +165,11 @@ func (app *LegoApplication) checkAndAutoRenew() {
 	if err := InstallCertToCamera(app.vapixUser, app.vapixPass, domain); err != nil {
 		app.acapp.Syslog.Errorf("Auto-install failed: %s", err)
 		SaveRunHistory(app.db, "auto-install", false, err.Error())
-		app.wsHub.Broadcast("lego_error", map[string]string{"error": "Auto-install failed: " + err.Error()})
+		app.wsHub.Broadcast(MsgLegoError, map[string]string{"error": "Auto-install failed: " + err.Error()})
 	} else {
 		app.acapp.Syslog.Infof("Auto-install successful for %s", domain)
 		SaveRunHistory(app.db, "auto-install", true, "Certificate installed successfully")
-		app.wsHub.Broadcast("lego_complete", map[string]string{"message": "Certificate auto-installed to camera"})
+		app.wsHub.Broadcast(MsgLegoComplete, map[string]string{"message": "Certificate auto-installed to camera"})
 	}
 }
 
@@ -298,13 +297,7 @@ func (app *LegoApplication) setupRoutes() {
 		if err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "No config found"})
 		}
-		domain := config.Domains
-		if idx := len(domain); idx > 0 {
-			parts := splitDomains(domain)
-			if len(parts) > 0 {
-				domain = parts[0]
-			}
-		}
+		domain := primaryDomain(config)
 		certFile := legoCertsPath + "/certificates/" + domain + ".crt"
 		keyFile := legoCertsPath + "/certificates/" + domain + ".key"
 
@@ -336,11 +329,7 @@ func (app *LegoApplication) setupRoutes() {
 		if err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "No config found"})
 		}
-		domain := config.Domains
-		parts := splitDomains(domain)
-		if len(parts) > 0 {
-			domain = parts[0]
-		}
+		domain := primaryDomain(config)
 
 		fileType := c.Params("type")
 		var filePath, fileName string
@@ -374,11 +363,7 @@ func (app *LegoApplication) setupRoutes() {
 		if err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "No config found"})
 		}
-		domain := config.Domains
-		parts := splitDomains(domain)
-		if len(parts) > 0 {
-			domain = parts[0]
-		}
+		domain := primaryDomain(config)
 
 		app.acapp.Syslog.Infof("Installing certificate for %s to camera", domain)
 		if err := InstallCertToCamera(app.vapixUser, app.vapixPass, domain); err != nil {
@@ -408,6 +393,15 @@ func splitDomains(domains string) []string {
 	return result
 }
 
+// primaryDomain returns the first domain from a comma-separated domain list.
+func primaryDomain(config *Config) string {
+	parts := splitDomains(config.Domains)
+	if len(parts) > 0 {
+		return parts[0]
+	}
+	return config.Domains
+}
+
 func getCertDaysRemaining(certPath string) (int, error) {
 	data, err := os.ReadFile(certPath)
 	if err != nil {
@@ -424,7 +418,7 @@ func getCertDaysRemaining(certPath string) (int, error) {
 	return int(time.Until(cert.NotAfter).Hours() / 24), nil
 }
 
-func parseCertInfo(certPath string) (map[string]interface{}, error) {
+func parseCertInfo(certPath string) (map[string]any, error) {
 	data, err := os.ReadFile(certPath)
 	if err != nil {
 		return nil, err
@@ -437,7 +431,7 @@ func parseCertInfo(certPath string) (map[string]interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	return map[string]interface{}{
+	return map[string]any{
 		"issuer":     cert.Issuer.CommonName,
 		"not_before": cert.NotBefore.Format("2006-01-02 15:04:05 UTC"),
 		"not_after":  cert.NotAfter.Format("2006-01-02 15:04:05 UTC"),

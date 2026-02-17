@@ -259,6 +259,35 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 
+interface LastRun {
+  id: number
+  created_at: string
+  command: string
+  success: boolean
+  output: string
+}
+
+interface CertInfo {
+  has_cert: boolean
+  domain: string
+  issuer?: string
+  not_before?: string
+  not_after?: string
+  san?: string[]
+  serial?: string
+}
+
+const WS = {
+  DOWNLOAD_PROGRESS: 'download_progress',
+  DOWNLOAD_COMPLETE: 'download_complete',
+  DOWNLOAD_ERROR: 'download_error',
+  LEGO_OUTPUT: 'lego_output',
+  LEGO_COMPLETE: 'lego_complete',
+  LEGO_ERROR: 'lego_error',
+} as const
+
+const MAX_LOG_LINES = 1000
+
 const isDev = import.meta.env.DEV
 const baseUrl = isDev ? '/api' : './api'
 const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -278,7 +307,7 @@ const showEabHmac = ref(false)
 const showCertDialog = ref(false)
 const installing = ref(false)
 const showLastRunLog = ref(false)
-const lastRun = ref<{ id: number; created_at: string; command: string; success: boolean; output: string } | null>(null)
+const lastRun = ref<LastRun | null>(null)
 const logLines = ref<string[]>([])
 const logContainer = ref<HTMLElement | null>(null)
 
@@ -300,15 +329,7 @@ const config = reactive({
 const envVars = reactive<Record<string, string>>({})
 const newEnvKey = ref('')
 const newEnvValue = ref('')
-const certInfo = ref<{
-  has_cert: boolean
-  domain: string
-  issuer?: string
-  not_before?: string
-  not_after?: string
-  san?: string[]
-  serial?: string
-} | null>(null)
+const certInfo = ref<CertInfo | null>(null)
 const dnsProviders = ref<string[]>([])
 const keyTypes = ['ec256', 'ec384', 'rsa2048', 'rsa4096']
 
@@ -533,6 +554,9 @@ function logLineClass(line: string): string {
 
 function appendLog(line: string) {
   logLines.value.push(line)
+  if (logLines.value.length > MAX_LOG_LINES) {
+    logLines.value = logLines.value.slice(-MAX_LOG_LINES)
+  }
   nextTick(() => {
     if (logContainer.value) {
       logContainer.value.scrollTop = logContainer.value.scrollHeight
@@ -566,33 +590,33 @@ function connectWebSocket() {
     try {
       const msg = JSON.parse(event.data)
       switch (msg.type) {
-        case 'download_progress':
+        case WS.DOWNLOAD_PROGRESS:
           downloading.value = true
           downloadPercent.value = msg.data.percent || 0
           downloadMessage.value = msg.data.message || ''
           break
-        case 'download_complete':
+        case WS.DOWNLOAD_COMPLETE:
           downloading.value = false
           legoReady.value = true
           downloadPercent.value = 100
           showMessage(msg.data.message || 'Download complete')
           fetchProviders()
           break
-        case 'download_error':
+        case WS.DOWNLOAD_ERROR:
           downloading.value = false
           showMessage(msg.data.error || 'Download failed', 'error')
           break
-        case 'lego_output':
+        case WS.LEGO_OUTPUT:
           appendLog(msg.data.line || '')
           break
-        case 'lego_complete':
+        case WS.LEGO_COMPLETE:
           running.value = false
           appendLog('--- ' + (msg.data.message || 'Done') + ' ---')
           showMessage(msg.data.message || 'Done')
           fetchCertInfo()
           fetchLastRun()
           break
-        case 'lego_error':
+        case WS.LEGO_ERROR:
           running.value = false
           appendLog('ERROR: ' + (msg.data.error || 'Unknown error'))
           showMessage(msg.data.error || 'Lego error', 'error')

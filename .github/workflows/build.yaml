@@ -9,10 +9,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         target:
           - { name: "armv7hf",  args: '-sdk "1.15" -ubunutu "22.04" -manifest "manifest.json" -tags "prod armv7hf" -arch armv7hf' }
           - { name: "aarch64",  args: '-sdk "1.15" -ubunutu "22.04" -manifest "manifest.json" -tags "prod aarch64" -arch aarch64' }
+
+    env:
+      FILE_PREFIX: LegoACAP_${{ github.ref_name }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,7 +29,10 @@ jobs:
 
       - name: Build Frontend
         working-directory: frontend
-        run: npm install && npm run build
+        run: |
+          npm install
+          npm run build
+          rm -rf node_modules
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -37,15 +45,19 @@ jobs:
       - name: Install goxisbuilder
         run: go install github.com/Cacsjep/goxisbuilder@v1.3.0
 
+      - run: mkdir out
+
       - name: Build ACAP
         working-directory: app
-        run: goxisbuilder ${{ matrix.target.args }}
+        run: |
+          goxisbuilder ${{ matrix.target.args }}
+          mv build/* ../out/${{ env.FILE_PREFIX }}_${{ matrix.target.name }}.eap
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: legoacap-${{ matrix.target.name }}
-          path: app/*.eap
+          name: ${{ matrix.target.name }}
+          path: out/*.eap
 
   release:
     needs: build
@@ -53,22 +65,14 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download armv7hf
-        uses: actions/download-artifact@v4
-        with:
-          name: legoacap-armv7hf
-          path: artifacts/armv7hf
+      - uses: actions/checkout@v4
 
-      - name: Download aarch64
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: legoacap-aarch64
-          path: artifacts/aarch64
+          path: downloads
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            artifacts/armv7hf/*.eap
-            artifacts/aarch64/*.eap
+          files: downloads/**/*.eap
           generate_release_notes: true

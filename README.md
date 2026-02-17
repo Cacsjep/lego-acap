@@ -4,6 +4,11 @@ An [ACAP](https://developer.axis.com/) that downloads and invokes [lego](https:/
 
 Downloads the lego binary on first start, provides a web UI for configuration, and supports all 100+ DNS providers that lego offers. Supports `armv7hf` and `aarch64`.
 
+## Acap Compatibility:
+    ACAP Native SDK 1.15, compatible with AXIS OS version: 11.11 (LTS) or greater
+    Schema 1.7.0 is compatible with firmware version: 11.10 or greater
+    AARCH64 and ARMvh7 devices.
+
 ## Quick Start
 
 1. Install the `.eap` on your Axis camera
@@ -118,7 +123,7 @@ VAPIX credentials are obtained automatically via D-Bus at app startup. If creden
 
 ## Building
 
-Requires [goxisbuilder](https://github.com/Cacsjep/goxisbuilder), Node.js, and AXIS Camera SDK 12.5.0+.
+Requires [goxisbuilder](https://github.com/Cacsjep/goxisbuilder), Node.js, and AXIS Camera.
 
 ```bash
 cd app

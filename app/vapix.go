@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,8 @@ import (
 
 	"github.com/Cacsjep/goxis/pkg/vapix"
 )
+
+var httpSOAPClient = &http.Client{Timeout: 30 * time.Second}
 
 const (
 	vapixServicesPath = "/vapix/services"
@@ -40,7 +43,7 @@ func vapixSOAPPost(username, password, body string) ([]byte, error) {
 	req.Header.Set("Content-Type", "application/soap+xml")
 	req.SetBasicAuth(username, password)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpSOAPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("SOAP request failed: %w", err)
 	}
@@ -64,7 +67,7 @@ func vapixSOAPPost(username, password, body string) ([]byte, error) {
 		if detail != "" {
 			msg += ": " + detail
 		}
-		return respBody, fmt.Errorf("%s", msg)
+		return respBody, errors.New(msg)
 	}
 
 	if resp.StatusCode != 200 {
