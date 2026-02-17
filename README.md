@@ -4,6 +4,8 @@ An [ACAP](https://developer.axis.com/) that downloads and invokes [lego](https:/
 
 Downloads the lego binary on first start, provides a web UI for configuration, and supports all 100+ DNS providers that lego offers. Supports `armv7hf` and `aarch64`.
 
+![Preview](preview.png)
+
 ## Acap Compatibility:
     ACAP Native SDK 1.15, compatible with AXIS OS version: 11.11 (LTS) or greater
     Schema 1.7.0 is compatible with firmware version: 11.10 or greater
@@ -114,10 +116,9 @@ Real-time streaming output from the running lego process, delivered over WebSock
 When you click **Install** (or auto-mode triggers installation), the app:
 
 1. Generates a unique certificate ID with a timestamp (e.g. `lego-260215143025`)
-2. Uploads the certificate and private key to the camera via ONVIF `LoadCertificateWithPrivateKey`
-3. Fetches available TLS ciphers from the camera
-4. Configures the camera's HTTPS server to use the new certificate via `SetWebServerTlsConfiguration`
-5. Cleans up any previous `lego-*` certificates from the camera
+2. Uploads the certificate and private key to the camera via VAPIX `LoadCertificateWithPrivateKey`
+3. Configures the camera's HTTPS server to use the new certificate via `SetWebServerTlsConfiguration`
+4. Cleans up any previous `lego-*` certificates from the camera
 
 VAPIX credentials are obtained automatically via D-Bus at app startup. If credential retrieval fails (e.g. on non-root installs), the Install button and auto-install are unavailable.
 

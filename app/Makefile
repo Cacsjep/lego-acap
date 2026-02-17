@@ -1,5 +1,5 @@
 CAMERA_IP ?= 10.0.0.48
-CAMERA_PWD ?= 1qay2wsx
+CAMERA_PWD ?= 
 
 frontend:
 	cd ../frontend && npm install && npm run build
