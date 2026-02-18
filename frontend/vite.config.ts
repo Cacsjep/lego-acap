@@ -7,7 +7,7 @@ export default defineConfig({
     vue(),
     vuetify({ autoImport: true }),
   ],
-  base: './',
+  base: '/local/legoacap/legoacap',
   build: {
     outDir: '../app/html',
     emptyOutDir: true,

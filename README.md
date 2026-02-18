@@ -126,10 +126,12 @@ VAPIX credentials are obtained automatically via D-Bus at app startup. If creden
 
 Requires [goxisbuilder](https://github.com/Cacsjep/goxisbuilder), Node.js, and AXIS Camera.
 
+*Adjust CAMERA_PWD* in Makefile and proxy in vite config when develop with make dev, so npm run dev works correctly.
+
 ```bash
 cd app
 make dev    # build + deploy to camera
-make build  # production build
+make prod  # production build
 ```
 
 ## Acknowledgements

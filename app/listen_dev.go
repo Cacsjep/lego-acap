@@ -3,3 +3,4 @@
 package main
 
 const ListenAddr = "0.0.0.0:8741"
+const UseBasePath = false

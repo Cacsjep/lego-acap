@@ -488,11 +488,11 @@ const WS = {
 const MAX_LOG_LINES = 1000
 
 const isDev = import.meta.env.DEV
-const baseUrl = isDev ? '/api' : './api'
+const baseUrl = isDev ? '/api' : '/local/legoacap/legoacap/api'
 const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
 const wsUrl = isDev
   ? `ws://${window.location.host}/ws`
-  : `${wsProtocol}//${window.location.host}${window.location.pathname.replace(/\/[^/]*$/, '')}/../legoacap_ws/ws`
+  : `${wsProtocol}//${window.location.host}/local/legoacap/legoacap_ws/ws`
 
 const wsConnected = ref(false)
 const legoReady = ref(false)

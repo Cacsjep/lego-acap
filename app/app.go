@@ -59,6 +59,18 @@ func (app *LegoApplication) Start() {
 		return
 	}
 
+	var httpBase, wsBase string
+	if UseBasePath {
+		httpBase, err = app.acapp.AcapWebBaseUri()
+		if err != nil {
+			app.acapp.Syslog.Critf("Failed to get ACAP web base URI: %s", err)
+			return
+		}
+		pkgcfg := app.acapp.Manifest.ACAPPackageConf
+		wsBase = fmt.Sprintf("/local/%s/%s", pkgcfg.Setup.AppName, pkgcfg.Configuration.ReverseProxy[1].ApiPath)
+		app.acapp.Syslog.Infof("Reverse proxy base paths - HTTP: %s, WS: %s", httpBase, wsBase)
+	}
+
 	app.wsHub = NewWSHub()
 
 	// Retrieve VAPIX credentials via D-Bus for cert installation
@@ -85,7 +97,7 @@ func (app *LegoApplication) Start() {
 
 	app.webserver = fiber.New()
 	app.webserver.Use(cors.New())
-	app.setupRoutes()
+	app.setupRoutes(httpBase, wsBase)
 
 	app.startAutoRenew()
 
@@ -173,8 +185,8 @@ func (app *LegoApplication) checkAndAutoRenew() {
 	}
 }
 
-func (app *LegoApplication) setupRoutes() {
-	app.webserver.Get("/ws", websocket.New(func(c *websocket.Conn) {
+func (app *LegoApplication) setupRoutes(httpBase, wsBase string) {
+	app.webserver.Get(wsBase+"/ws", websocket.New(func(c *websocket.Conn) {
 		app.wsHub.Register(c)
 		defer app.wsHub.Unregister(c)
 
@@ -186,7 +198,7 @@ func (app *LegoApplication) setupRoutes() {
 		}
 	}))
 
-	api := app.webserver.Group("/api")
+	api := app.webserver.Group(httpBase + "/api")
 
 	api.Get("/status", func(c fiber.Ctx) error {
 		return c.JSON(fiber.Map{
@@ -374,7 +386,7 @@ func (app *LegoApplication) setupRoutes() {
 		return c.JSON(fiber.Map{"message": "Certificate installed to camera"})
 	})
 
-	app.webserver.Use("/", static.New("./html"))
+	app.webserver.Use(httpBase+"/", static.New("./html"))
 }
 
 func fileExists(path string) bool {
